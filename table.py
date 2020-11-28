@@ -6,21 +6,29 @@ Module documentation.
 # Imports
 import sys
 import os
+import random
 import pdb
 
 # Global variables
 
 # Class declarations
-class PlayerConfig(object):
+class Player(object):
 	"""docstring for PlayerConfig"""
 	def __init__(self):
 		self.ante = 10
-		self.buy_in = 500
+		self.money = 500 # This is the buy-in
 		self.dontcome = 200
 		self.place = 10
 		self.lay = 10
 		self.come = 10
 		self.field = 0
+
+	def ante(self):
+		self.money -= self.ante
+		return self.ante
+
+	def gain(self, value):
+		self.money += value
 
 class TableConfig(object):
 	"""docstring for TableConfig"""
@@ -53,6 +61,9 @@ class TableConfig(object):
 			"nine_comebet": 4,
 			"ten_comebet": 3
 		}
+		self.comeouts = [4, 5, 6, 8, 9, 10]
+		self.naturals = [7, 11]
+		self.craps = [2, 3, 12]
 
 class CrapsTable(object):
 	"""docstring for CrapsTable"""
@@ -63,7 +74,8 @@ class CrapsTable(object):
 		self.comebets = []
 		self.dontcomebets = []
 		self.fieldbet = FieldBet(0)
-
+		self.passline = None
+		self.point = 0
 
 		self.build_table()
 
@@ -118,6 +130,80 @@ class CrapsTable(object):
 		for item in dontcomebet_builder:
 			self.dontcomebets.append(DontComeBet(item[0], item[1]))
 
+	def change_point(self, point):
+		for comebet in self.comebets:
+			if comebet.roll == point:
+				comebet.point = True
+			else:
+				comebet.point = False
+
+	def evaluate(self, player, dice):
+		if self.point == 0:
+			self.evaluate_comebets(player, dice)
+			self.evaluate_laybets(player, dice)
+			self.evaluate_placebets(player, dice)
+
+	def evaluate_comebets(self, player, dice):
+		if self.point == 0:
+			for comebet in self.comebets:
+				if comebet.bet == 0:
+					continue
+				else:
+					player.gain(comebet.bet * 2)
+					comebet.bet = 0
+
+	def evaluate_laybets(self, player, dice):
+		if self.point == 0:
+			for laybet in self.laybets:
+				if laybet.bet == 0:
+					continue
+				else:
+					if laybet.roll == dice:
+						if not laybet.off:
+							player.gain(laybet.bet*laybet.payout + laybet.bet)
+		return
+
+	def evaluate_placebets(self, player, dice):
+		if self.point == 0:
+			for comebet in self.comebets:
+				if comebet.bet == 0:
+					continue
+				else:
+					if comebet.roll == dice:
+						if not comebet.off:
+							player.gain(comebet.bet*comebet.payout + comebet.bet)
+
+	def setup_table(self, player):
+		self.passline = PassLine(player)
+
+	def play_round(self, player):
+		playing = True
+		while(playing):
+			self.make_bets(player)
+			playing = self.roll(player)
+    	pdb.set_trace()
+
+	def make_bets(self, player):
+		# First division: Come Out and Point
+		if self.point == 0:
+			self.passline.bet = player.ante()
+		return
+
+	def roll(self, player):
+		dice = sum(random.randint(1, 6) for _ in range(2))
+
+		if self.point == 0: # Come Out
+			if dice in self.table.craps:
+				return False
+			elif dice in self.table.naturals:
+				player.gain(player.passline.bet * 2)
+				return False
+			elif dice in self.table.comeouts:
+				self.evaluate(player, dice)
+				self.change_point(dice)
+
+
+
 
 class PlaceBet(object):
 	"""docstring for PlaceBet"""
@@ -145,7 +231,7 @@ class ComeBet(object):
 		self.name = name
 		self.roll = roll
 		self.cap = cap
-		self.payout = payout
+		self.odds_payout = payout
 		self.bet = 0
 		self.odds = 0
 		self.point = False
@@ -176,10 +262,20 @@ class PassLine(object):
 # Function declarations
 
 def main():
-    player = PlayerConfig()
+	# Player enters the game
+    player = Player()
+
+    # House builds table and establishes rules
     table_rules = TableConfig()
     table = CrapsTable(table_rules)
-    pdb.set_trace()
+
+    # Player antes, begins playing
+    table.setup_table(player)
+
+    test_rounds = 10
+    for i in range(test_rounds):
+    	table.play_round(player)
+
 
 # Main body
 if __name__ == '__main__':
