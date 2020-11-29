@@ -74,9 +74,12 @@ class CrapsTable(object):
         self.laybets = []
         self.comebets = []
         self.dontcomebets = []
-        self.fieldbet = FieldBet(0)
+        self.fieldbet = FieldBet()
         self.passline = None
         self.point = 0
+
+        self.come_stage = 0
+        self.dontcome_stage = 0
 
         self.build_table()
 
@@ -88,47 +91,47 @@ class CrapsTable(object):
         return
 
     def build_placebets(self):
-        placebet_builder = [
+        self.placebet_builder = [
             (4, "four_placebet"),
             (5, "five_placebet"),
             (6, "six_placebet"),
             (8, "eight_placebet"),
             (9, "nine_placebet"),
             (10, "ten_placebet")]
-        for item in placebet_builder:
+        for item in self.placebet_builder:
             self.placebets.append(PlaceBet(item[0], item[1], self.table.payouts[item[1]]))
 
     def build_laybets(self):
-        laybet_builder = [
+        self.laybet_builder = [
             (4, "four_laybet"),
             (5, "five_laybet"),
             (6, "six_laybet"),
             (8, "eight_laybet"),
             (9, "nine_laybet"),
             (10, "ten_laybet")]
-        for item in laybet_builder:
+        for item in self.laybet_builder:
             self.laybets.append(LayBet(item[0], item[1], self.table.payouts[item[1]]))
 
     def build_comebets(self):
-        comebet_builder = [
+        self.comebet_builder = [
             (4, "four_comebet"),
             (5, "five_comebet"),
             (6, "six_comebet"),
             (8, "eight_comebet"),
             (9, "nine_comebet"),
             (10, "ten_comebet")]
-        for item in comebet_builder:
+        for item in self.comebet_builder:
             self.comebets.append(ComeBet(item[0], item[1], self.table.payouts[item[1]], self.table.caps[item[1]]))
 
     def build_dontcomebets(self):
-        dontcomebet_builder = [
+        self.dontcomebet_builder = [
             (4, "four_dontcomebet"),
             (5, "five_dontcomebet"),
             (6, "six_dontcomebet"),
             (8, "eight_dontcomebet"),
             (9, "nine_dontcomebet"),
             (10, "ten_dontcomebet")]
-        for item in dontcomebet_builder:
+        for item in self.dontcomebet_builder:
             self.dontcomebets.append(DontComeBet(item[0], item[1]))
 
     def change_point(self, point):
@@ -141,6 +144,7 @@ class CrapsTable(object):
     def evaluate(self, player, dice):
         if self.point == 0:
             self.evaluate_comebets(player, dice)
+            self.evaluate_dontcomebets(player, dice)
             self.evaluate_laybets(player, dice)
             self.evaluate_placebets(player, dice)
 
@@ -149,33 +153,52 @@ class CrapsTable(object):
             for comebet in self.comebets:
                 if comebet.bet == 0:
                     continue
-                else:
-                    player.gain(comebet.bet * 2)
-                    comebet.bet = 0
+                elif comebet.roll == dice:
+                    comebet.payout(player)
+
+    def evaluate_dontcomebets(self, player, dice):
+        for dontcomebet in self.dontcomebets:
+            pass
+
+    def evaluate_placebets(self, player, dice):
+        if self.point == 0:
+            for placebet in self.placebets:
+                if placebet.bet == 0:
+                    continue
+                elif placebet.roll == dice:
+                    placebet.payout(player)
 
     def evaluate_laybets(self, player, dice):
         if self.point == 0:
             for laybet in self.laybets:
                 if laybet.bet == 0:
                     continue
-                else:
-                    if laybet.roll == dice:
-                        if not laybet.off:
-                            player.gain(laybet.bet*laybet.payout + laybet.bet)
+                elif laybet.roll == dice:
+                    laybet.reset()
         return
 
-    def evaluate_placebets(self, player, dice):
-        if self.point == 0:
-            for comebet in self.comebets:
-                if comebet.bet == 0:
-                    continue
-                else:
-                    if comebet.roll == dice:
-                        if not comebet.off:
-                            player.gain(comebet.bet*comebet.payout + comebet.bet)
-
     def setup_table(self, player):
-        self.passline = PassLine(player)
+        self.passline = PassLine(player, self.comebet_builder, self.table.payouts)
+
+    def seven(self, player):
+        # paying: lays, don't comes, come stage, first pass
+        for lay in self.laybets:
+            lay.payout(player)
+        for dc in self.dontcomebets:
+            dc.payout(player)
+        player.gain(self.come_stage*2)
+        self.passline.payout(player)
+
+        # Clear: field, comebets, stages, lines, lays, places
+        self.field.reset()
+        self.passline.reset()
+        self.come_stage = 0
+        self.dontcome_stage = 0
+        for cb in self.comebets:
+            cd.reset()
+        for lb in self.laybets:
+            lb.reset()
+        pass
 
     def play_round(self, player):
         playing = True
@@ -191,17 +214,22 @@ class CrapsTable(object):
         return
 
     def roll(self, player):
-        dice = sum(random.randint(1, 6) for _ in range(2))
+        dice = random.randint(1, 6) + random.randint(1, 6)
 
         if self.point == 0: # Come Out
             if dice in self.table.craps:
                 return False
             elif dice in self.table.naturals:
-                player.gain(player.passline.bet * 2)
+                self.passline.payout(player)
+                if dice == 7:
+                    self.seven(player)
                 return False
             elif dice in self.table.comeouts:
                 self.evaluate(player, dice)
                 self.change_point(dice)
+                return True
+        else: # Point
+            return False
 
 
 
@@ -214,7 +242,17 @@ class PlaceBet(object):
         self.bet = 0
         self.roll = roll
         self.point = False
-        self.off = False
+        self.off = 0
+
+    def payout(self, player):
+        player.gain(self.bet) # bet refund
+        player.gain(self.bet*self.payout*self.off) # profit
+        self.reset()
+
+    def reset(self):
+        self.bet = 0
+        self.point = False
+        self.off = 0
 
 class LayBet(object):
     """docstring for LayBet"""
@@ -224,7 +262,16 @@ class LayBet(object):
         self.bet = 0
         self.roll = roll
         self.point = False
-        self.off = False
+        self.off = 0
+
+    def payout(self, player):
+        player.gain(self.bet) # refund
+        player.gain(self.bet*self.payout*self.off) # profit
+        self.reset()
+
+    def reset(self):
+        self.bet = 0
+        self.off = 0
 
 class ComeBet(object):
     """docstring for ComeBet"""
@@ -236,7 +283,19 @@ class ComeBet(object):
         self.bet = 0
         self.odds = 0
         self.point = False
-        self.off = False
+        self.off = 0
+    
+    def reset(self):
+        self.bet = 0
+        self.odds = 0
+        self.point = False
+        self.off = 0
+
+    def payout(self, player):
+        player.gain(self.bet*2) # 1:1 payout
+        player.gain(self.odds) # odds refund
+        player.gain(self.odds*self.odds_payout*self.off) # odds payout
+        self.reset()
         
 class DontComeBet(object):
     """docstring for DontComeBet"""
@@ -250,13 +309,37 @@ class FieldBet(object):
     def __init__(self, bet):
         self.bet = 0
 
+    def reset(self):
+        self.bet = 0
+
 class PassLine(object):
     """docstring for PassLine"""
-    def __init__(self, player):
-        self.bet = player.ante
+    def __init__(self, player, odds_key, payouts):
+        self.bet = 0
         self.odds = 0
         self.roll = 0
         self.point = 0
+        self.odds_payout = 0
+        self.odds_key = odds_key
+        self.payouts = payouts
+
+    def set_odds(self):
+        for odds in self.odds_key:
+            if odds[0] == self.point:
+                self.odds_payout = self.payouts[odds[1]]
+
+
+    def payout(self, player):
+        player.gain(self.bet*2) # 1:1 payout
+        player.gain(self.odds) # odds refund
+        player.gain(self.odds*self.odds_payout) # odds payout (this doesn't turn off)
+
+    def reset(self):
+        self.bet = 0
+        self.odds = 0
+        self.roll = 0
+        self.point = 0
+        self.odds_payout = 0
         
         
 
@@ -265,7 +348,6 @@ class PassLine(object):
 def main():
     # Player enters the game
     player = Player()
-    pdb.set_trace()
 
     # House builds table and establishes rules
     table_rules = TableConfig()
