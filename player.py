@@ -15,9 +15,10 @@ from termcolor import cprint
 class Player(object):
     """docstring for PlayerConfig"""
     def __init__(self):
-        self.money = 500 # This is the buy-in
+        self.money = 5000 # This is the buy-in
         self.max = self.money
-        self.cashout = 1000
+        self.min = self.money
+        self.cashout = 10000
 
         self.broke = False
 
@@ -27,9 +28,9 @@ class Player(object):
         self.place = 5
         self.lay = 5
         self.come = 10
-        self.field = 5
+        self.field = 0
 
-        self.lay_numbers = [4, 5, 6, 8, 9, 10]
+        self.lay_numbers = []
         self.place_numbers = [4, 5, 6 ,8, 9, 10]
 
         self.caps = {
@@ -66,6 +67,8 @@ class Player(object):
     def review(self):
         if self.money > self.max:
             self.max = self.money
+        if self.money < self.min:
+            self.min = self.money
 
     def pay(self, value, msg):
         self.money -= value
@@ -100,7 +103,10 @@ class Player(object):
         table_max = table.passline.get_bet()*table.passline.get_cap()
         if amt > table_max:
             amt = table_max
-        return self.pay(amt, 'pass odds')
+        if self.cash_exists(amt):
+            return self.pay(amt, 'pass odds')
+        else:
+            return 0
     
     def confirm_pass_odds(self, table):
         if table.passline.has_bet() and not table.passline.has_odds():
@@ -116,7 +122,11 @@ class Player(object):
         table_max = table.dontpassline.get_bet()*table.dontpassline.get_cap()
         if amt > table_max:
             amt = table_max
-        return self.pay(amt, 'don\'t pass odds')
+        if self.cash_exists(amt):
+            return self.pay(amt, 'don\'t pass odds')
+        else:
+            return 0
+
     def confirm_dontpass_odds(self, table):
         if table.dontpassline.has_bet() and not table.dontpassline.has_odds():
             return True
@@ -140,11 +150,44 @@ class Player(object):
             if table.come_stage > 0:
                 confirm = False
         return confirm
+    
+    def bet_come_odds(self, table, cb):
+        self_cap = self.caps[cb.get_key()]
+        amt = cb.get_bet()*self_cap
+        table_max = cb.get_bet()*cb.get_cap()
+        if amt > table_max:
+            amt = table_max
+        if self.cash_exists(amt):
+            return self.pay(amt, 'come odds')
+        else:
+            return 0
+
+    def confirm_come_odds(self, table, cb):
+        if cb.has_bet() and not cb.has_odds():
+            return True
+        else:
+            return False
 
     def bet_dontcome(self, table):
         return self.pay(self.dontcome, 'don\'t come')
     def confirm_dontcomebet(self, table):
         return not self.dc_exists(table) and self.cash_exists(self.dontcome)
+    def confirm_dontcome_odds(self, table, dc):
+        if dc.has_bet() and not dc.has_odds():
+            return True
+        else:
+            return False
+
+    def bet_dontcome_odds(self, table, dc):
+        self_cap = self.caps[dc.get_key()]
+        amt = dc.get_bet()*self_cap
+        table_max = dc.get_bet()*dc.get_cap()
+        if amt > table_max:
+            amt = table_max
+        if self.cash_exists(amt):
+            return self.pay(amt, 'don\'t come odds')
+        else:
+            return 0
 
     def bet_lay(self, table, lb):
         return self.pay(self.lay, 'lay')
@@ -163,6 +206,16 @@ class Player(object):
             playing = False
         else:
             playing = (pb.roll in self.place_numbers) and self.cash_exists(self.place)
+
+        for cb in table.comebets:
+            if cb.roll == pb.roll:
+                if cb.has_bet():
+                    playing = False
+
+        for dc in table.dontcomebets:
+            if dc.roll == pb.roll:
+                if dc.has_bet():
+                    playing = False
         
         return playing
 

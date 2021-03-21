@@ -166,6 +166,7 @@ class CrapsTable(object):
             self.point = 0
         else:
             self.point = point
+            cprint('-->New point: {}'.format(point), 'cyan')
             self.passline.set_odds(point)
             self.dontpassline.set_odds(point)
             for cb in self.comebets:
@@ -193,6 +194,7 @@ class CrapsTable(object):
             if dice in self.table.naturals:
                 self.passline.payout(player)
                 self.dontpassline.reset()
+            
             elif dice in self.table.craps:
                 self.passline.reset()
                 if dice == 12:
@@ -203,44 +205,34 @@ class CrapsTable(object):
             if dice == self.point:
                 self.passline.payout(player)
                 self.dontpassline.reset()
+            
             elif dice == 7:
                 self.passline.reset()
                 self.dontpassline.payout(player)
         return
 
     def evaluate_comebets(self, player, dice):
-        if self.point == 0:
-            # If the point is off, then come bets
-            # should have been cleared. I think
-            # there is nothing to do.
-            pass
+        # If there is a match, the bet is a win
+        # and must be paid
+        if dice == 7:
+            for cb in self.comebets:
+                cb.reset()
         else:
-            # If there is a match, the bet is a win
-            # and must be paid
-            if dice == 7:
-                for cb in self.comebets:
-                    cb.reset()
-            else:
-                for cb in self.comebets:
-                    if cb.bet != 0 and cb.roll == dice:
-                        cb.payout(player)
+            for cb in self.comebets:
+                if cb.has_bet() and cb.roll == dice:
+                    cb.payout(player)
 
     def evaluate_dontcomebets(self, player, dice):
-        if self.point == 0:
-            # If the point is off, the most recent
-            # roll was a 7 and there is nothing to do.
-            pass
+        # If there is a match, the bet is a loss
+        # and must be cleared. A 7 wins all don't comes
+        if dice == 7:
+            for dc in self.dontcomebets:
+                if dc.has_bet():
+                    dc.payout(player)
         else:
-            # If there is a match, the bet is a loss
-            # and must be cleared. A 7 wins all don't comes
-            if dice == 7:
-                for dc in self.dontcomebets:
-                    if dc.bet != 0:
-                        dc.payout(player)
-            else:
-                for dc in self.dontcomebets:
-                    if dc.roll == dice:
-                        dc.reset()
+            for dc in self.dontcomebets:
+                if dc.roll == dice:
+                    dc.reset()
         return
 
     def evaluate_placebets(self, player, dice):
@@ -327,15 +319,18 @@ class CrapsTable(object):
     def play_round(self, player):
         playing = True
         while(playing):
-            if self.debug:
-                pdb.set_trace()
             self.make_bets(player)
+
+            if self.debug:
+                self.readout(player)
+
+            
             playing = self.roll(player)
 
             if self.verbose or self.debug:
                 self.readout(player)
-                if self.verbose:
-                    time.sleep(5)
+                if self.debug:
+                    pdb.set_trace()
                 print('')
                 print('************************************************')
         print('~~~~ ROUND END ~~~~~')
@@ -351,6 +346,7 @@ class CrapsTable(object):
             
             self.passline.make_bet(pass_bet)
             self.dontpassline.make_bet(dontpass_bet)
+
         else:
             #Field
             if player.confirm_fieldbet(self):
@@ -371,6 +367,8 @@ class CrapsTable(object):
             for lb in self.laybets:
                 if lb.has_bet():
                     continue
+                elif self.point == lb.roll:
+                    continue
                 elif player.confirm_laybet(self, lb):
                     bet = player.bet_lay(self, lb)
                     lb.make_bet(bet)
@@ -378,6 +376,8 @@ class CrapsTable(object):
             # Place
             for pb in self.placebets:
                 if pb.has_bet():
+                    continue
+                elif self.point == pb.roll:
                     continue
                 elif player.confirm_placebet(self, pb):
                     bet = player.bet_place(self, pb)
@@ -393,7 +393,19 @@ class CrapsTable(object):
                 bet = player.bet_dontpass_odds(self)
                 self.dontpassline.bet_odds(bet)
 
+        # Come odds
+        for cb in self.comebets:
+            if cb.has_bet():
+                if player.confirm_come_odds(self, cb):
+                    bet = player.bet_come_odds(self, cb)
+                    cb.bet_odds(bet)
 
+        # Don't Come odds
+        for dc in self.dontcomebets:
+            if dc.has_bet():
+                if player.confirm_dontcome_odds(self, dc):
+                    bet = player.bet_dontcome_odds(self, dc)
+                    dc.bet_odds(bet)
         return
 
     def roll(self, player):
@@ -433,22 +445,30 @@ class CrapsTable(object):
         print('Come bets:')
         for cb in self.comebets:
             if cb.bet > 0:
-                print('| {}:  ${} |'.format(cb.roll, cb.bet), end = '')
+                print('| {}:  ${}  (${}) |'.format(cb.roll, cb.get_bet(), cb.get_odds()), end = '')
         print('')
         print('Dont Come bets: ')
         for dc in self.dontcomebets:
             if dc.bet > 0:
-                print('| {}:  ${} |'.format(dc.roll, dc.bet), end = '')
+                print('| {}:  ${} (${}) |'.format(dc.roll, dc.get_bet(), dc.get_odds()), end = '')
         print('')
         print('Place bets: ')
         for pb in self.placebets:
             if pb.bet > 0:
-                print('| {}:  ${} |'.format(pb.roll, pb.bet), end = '')
+                if pb.is_on():
+                    color = 'white'
+                elif pb.is_off():
+                    color = 'grey'
+                cprint('| {}:  ${} |'.format(pb.roll, pb.bet), color, end = '')
         print('')
         print('Lay bets: ')
         for lb in self.laybets:
             if lb.bet > 0:
-                print('| {}:  ${} |'.format(lb.roll, lb.bet), end = '')
+                if lb.is_on():
+                    color = 'white'
+                elif lb.is_off():
+                    color='grey'
+                cprint('| {}:  ${} |'.format(lb.roll, lb.bet), color, end = '')
         print('')
         cprint('POINT: {}'.format(self.point), 'cyan')
 
@@ -497,7 +517,13 @@ class PlaceBet(object):
         self.bet = amt
 
     def has_bet(self):
-        return self.bet == 0
+        return self.bet > 0
+
+    def is_on(self):
+        return self.off == 0
+
+    def is_off(self):
+        return self.off == 1
 
 class LayBet(object):
     """docstring for LayBet"""
@@ -530,7 +556,13 @@ class LayBet(object):
         self.bet = amt
 
     def has_bet(self):
-        return self.bet == 0
+        return self.bet > 0
+
+    def is_on(self):
+        return self.off == 0
+
+    def is_off(self):
+        return self.off == 1
 
 class ComeBet(object):
     """docstring for ComeBet"""
@@ -561,7 +593,27 @@ class ComeBet(object):
         self.point = True
     
     def has_bet(self):
-        return self.bet == 0
+        return self.bet > 0
+
+    def has_odds(self):
+        return self.odds > 0
+
+    def bet_odds(self, amt):
+        if amt > self.bet*self.cap:
+            cprint('ALERT: EXCEEDED TABLE ODDS CAP')
+        self.odds = amt
+    
+    def get_bet(self):
+        return self.bet
+
+    def get_cap(self):
+        return self.cap
+
+    def get_key(self):
+        return self.name
+
+    def get_odds(self):
+        return self.odds
 
 class DontComeBet(object):
     """docstring for DontComeBet"""
@@ -589,7 +641,27 @@ class DontComeBet(object):
         self.reset()
     
     def has_bet(self):
-        return self.bet == 0
+        return self.bet > 0
+
+    def has_odds(self):
+        return self.odds > 0
+    
+    def bet_odds(self, amt):
+        if amt > self.bet*self.cap:
+            cprint('ALERT: EXCEEDED TABLE ODDS CAP')
+        self.odds = amt
+    
+    def get_bet(self):
+        return self.bet
+
+    def get_cap(self):
+        return self.cap
+
+    def get_key(self):
+        return self.name
+
+    def get_odds(self):
+        return self.odds
 
 class FieldBet(object):
     """docstring for FieldBet"""
@@ -748,6 +820,7 @@ def main(args):
     else:
         cprint('~*~*~*~*~*~*~*~*~*~*~*~', 'green')
     cprint('Peak $$$: {}'.format(player.max), 'cyan')
+    cprint('Low  $$$: {}'.format(player.min), 'magenta')
 
 
 # Main body
