@@ -14,24 +14,26 @@ from termcolor import cprint
 # Class declarations
 class Player(object):
     """docstring for PlayerConfig"""
-    def __init__(self):
-        self.money = 5000 # This is the buy-in
+    def __init__(self, args):
+        self.verbose = args.v
+        self.buy_in = args.buyin
+        self.money = self.buy_in
         self.max = self.money
         self.min = self.money
-        self.cashout = 10000
+        self.cashout = args.out
 
         self.broke = False
 
         self.passline = 10
         self.dontpassline = 0
-        self.dontcome = 100
-        self.place = 5
+        self.dontcome = 50
+        self.place = 15
         self.lay = 5
-        self.come = 10
+        self.come = 15
         self.field = 0
 
         self.lay_numbers = []
-        self.place_numbers = [4, 5, 6 ,8, 9, 10]
+        self.place_numbers = [4, 5, 6, 8, 9, 10]
 
         self.caps = {
             "four_comebet": 3,
@@ -47,6 +49,21 @@ class Player(object):
             "nine_dontcomebet": 4,
             "ten_dontcomebet": 3
         }
+
+    def get_peak(self):
+        return self.max
+
+    def get_low(self):
+        return self.min
+
+    def get_money(self):
+        return self.money
+
+    def get_buy_in(self):
+        return self.buy_in
+
+    def get_cashout(self):
+        return self.cashout
 
     def still_playing(self):
         self.review()
@@ -72,13 +89,13 @@ class Player(object):
 
     def pay(self, value, msg):
         self.money -= value
-        if value > 0:
+        if value > 0 and self.verbose:
             self.broadcast(value, msg, loss=True)
         return value
 
     def gain(self, value, msg):
         self.money += value
-        if value > 0:
+        if value > 0 and self.verbose:
             self.broadcast(value, msg, win=True)
         return value
 

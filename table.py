@@ -10,6 +10,7 @@ import random
 import pdb
 from termcolor import cprint
 from player import Player
+from tracker import Tracker
 import time
 import argparse
 from math import floor
@@ -17,23 +18,6 @@ from math import floor
 # Global variables
 
 # Class declarations
-# class Player(object):
-#   """docstring for PlayerConfig"""
-#   def __init__(self):
-#       self.ante = 10
-#       self.money = 500 # This is the buy-in
-#       self.dontcome = 200
-#       self.place = 10
-#       self.lay = 10
-#       self.come = 10
-#       self.field = 0
-
-#   def ante(self):
-#       self.money -= self.ante
-#       return self.ante
-
-#   def gain(self, value):
-#       self.money += value
 
 class TableConfig(object):
     """docstring for TableConfig"""
@@ -61,12 +45,12 @@ class TableConfig(object):
             "nine_comebet": 3/2,
             "ten_comebet": 2/1,
             #Don't Come
-            "four_dontcomebet": 2/1,
-            "five_dontcomebet": 3/2,
-            "six_dontcomebet": 6/5,
-            "eight_dontcomebet": 6/5,
-            "nine_dontcomebet": 3/2,
-            "ten_dontcomebet": 2/1,
+            "four_dontcomebet": 1/2,
+            "five_dontcomebet": 2/3,
+            "six_dontcomebet": 5/6,
+            "eight_dontcomebet": 5/6,
+            "nine_dontcomebet": 2/3,
+            "ten_dontcomebet": 1/2,
         }
         self.caps = {
             "four_comebet": 3,
@@ -166,7 +150,8 @@ class CrapsTable(object):
             self.point = 0
         else:
             self.point = point
-            cprint('-->New point: {}'.format(point), 'cyan')
+            if self.verbose:
+                cprint('-->New point: {}'.format(point), 'cyan')
             self.passline.set_odds(point)
             self.dontpassline.set_odds(point)
             for cb in self.comebets:
@@ -259,7 +244,7 @@ class CrapsTable(object):
 
     def evaluate_fieldbet(self, player, dice):
         if dice in self.table.field_win:
-            self.fieldbet.payout(player)
+            self.fieldbet.payout(player, dice)
 
         elif dice in self.table.field_loss:
             self.fieldbet.reset()
@@ -333,9 +318,10 @@ class CrapsTable(object):
                     pdb.set_trace()
                 print('')
                 print('************************************************')
-        print('~~~~ ROUND END ~~~~~')
-        if not self.verbose and not self.debug:
-            self.readout(player)
+        if self.verbose:
+            print('~~~~ ROUND END ~~~~~')
+        # if not self.verbose and not self.debug:
+        #     self.readout(player)
         return player.still_playing()
 
     def make_bets(self, player):
@@ -410,8 +396,8 @@ class CrapsTable(object):
 
     def roll(self, player):
         dice = random.randint(1, 6) + random.randint(1, 6)
-
-        cprint('*******************\n~~~DICE: {}~~~~\n*******************'.format(dice), 'yellow')
+        if self.verbose:
+            cprint('*******************\n~~~DICE: {}~~~~\n*******************'.format(dice), 'yellow')
 
         self.evaluate(player, dice)
 
@@ -439,35 +425,46 @@ class CrapsTable(object):
         print('Total money: ${}'.format(player.money))
         print('\n---------Board---------')
         print('Pass line:    ${} (${})    Don\'t Pass:       ${} (${})'.format(self.passline.bet, self.passline.odds, self.dontpassline.bet, self.dontpassline.odds))
-        print('Field:        ${}'.format(self.fieldbet.bet))
-        print('Come stage:   ${}          Don\'t Come stage: ${}'.format(self.come_stage, self.dontcome_stage))
+        
+        color = self.bet_readout_color(self.fieldbet.bet)
+        print('Field:        $', end='')
+        cprint('{}'.format(self.fieldbet.bet), color)
+        
+        color = self.bet_readout_color(self.come_stage)
+        print('Come stage:   $', end='')
+        cprint('{}'.format(self.come_stage), color, end='')
+
+        color = self.bet_readout_color(self.dontcome_stage)
+        print('          Don\'t Come stage: $', end='')
+        cprint('{}'.format(self.dontcome_stage), color, end='')
         print('')
+        
         print('Come bets:')
         for cb in self.comebets:
             if cb.bet > 0:
-                print('| {}:  ${}  (${}) |'.format(cb.roll, cb.get_bet(), cb.get_odds()), end = '')
+                cprint('| {}:  ${}  (${}) |'.format(cb.roll, cb.get_bet(), cb.get_odds()), 'yellow', end = '')
         print('')
         print('Dont Come bets: ')
         for dc in self.dontcomebets:
             if dc.bet > 0:
-                print('| {}:  ${} (${}) |'.format(dc.roll, dc.get_bet(), dc.get_odds()), end = '')
+                cprint('| {}:  ${} (${}) |'.format(dc.roll, dc.get_bet(), dc.get_odds()), 'yellow', end = '')
         print('')
         print('Place bets: ')
         for pb in self.placebets:
             if pb.bet > 0:
                 if pb.is_on():
-                    color = 'white'
+                    color = 'yellow'
                 elif pb.is_off():
-                    color = 'grey'
+                    color = 'magenta'
                 cprint('| {}:  ${} |'.format(pb.roll, pb.bet), color, end = '')
         print('')
         print('Lay bets: ')
         for lb in self.laybets:
             if lb.bet > 0:
                 if lb.is_on():
-                    color = 'white'
+                    color = 'yellow'
                 elif lb.is_off():
-                    color='grey'
+                    color='magenta'
                 cprint('| {}:  ${} |'.format(lb.roll, lb.bet), color, end = '')
         print('')
         cprint('POINT: {}'.format(self.point), 'cyan')
@@ -484,6 +481,12 @@ class CrapsTable(object):
         for pb in self.placebets:
             pb.turn_off()
 
+    def bet_readout_color(self, bet):
+        if bet > 0:
+            return 'yellow'
+        else:
+            return 'white'
+
 class PlaceBet(object):
     """docstring for PlaceBet"""
     def __init__(self, roll, name,  odd):
@@ -496,9 +499,8 @@ class PlaceBet(object):
 
     def payout(self, player):
         if self.bet > 0:
-            amt = self.bet # bet refund
-            amt += self.bet*self.odds # profit
-
+            amt = self.bet
+            amt += self.bet*self.odds
             player.gain(floor(amt), 'place')
         self.reset()
 
@@ -537,8 +539,8 @@ class LayBet(object):
 
     def payout(self, player):
         if self.bet > 0:
-            amt = self.bet # refund
-            amt += self.bet*self.odds # profit
+            amt = self.bet
+            amt += self.bet*self.odds
             player.gain(floor(amt), 'lay')
         self.reset()
 
@@ -668,8 +670,11 @@ class FieldBet(object):
     def __init__(self):
         self.bet = 0
 
-    def payout(self, player):
-        player.gain(self.bet*2, 'field')
+    def payout(self, player, dice):
+        if dice in [2, 12]:
+            player.gain(self.bet*3, 'field')
+        else:
+            player.gain(self.bet*2, 'field')
         self.reset()
 
     def reset(self):
@@ -709,7 +714,6 @@ class PassLine(object):
         self.reset()
 
     def reset(self):
-        cprint('pass line reset', 'red')
         self.bet = 0
         self.odds = 0
         self.roll = 0
@@ -801,26 +805,63 @@ class DontPassLine(object):
 
 # Function declarations
 
+def printProgressBar(count, total, prefix = '', suffix = '', decimals = 1, length = 40, fill = '█', printEnd = "\r"):
+    """
+    Call in a loop to create terminal progress bar
+    @params:
+        count       - Required  : current count (Int)
+        total       - Required  : total counts (Int)
+        prefix      - Optional  : prefix string (Str)
+        suffix      - Optional  : suffix string (Str)
+        decimals    - Optional  : positive number of decimals in percent complete (Int)
+        length      - Optional  : character length of bar (Int)
+        fill        - Optional  : bar fill character (Str)
+        printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
+    """
+    if count == 0:
+        return
+
+    percent = ("{0:." + str(decimals) + "f}").format(100*(float(count) / float(total)))
+    filledLength = int(length * count // total)
+    bar = fill * filledLength + '-' * (length - filledLength)
+    print(f'\r{prefix} |{bar}| {percent}%', end = printEnd)
+    # Print New Line on Complete
+    if count == total: 
+        print()
+
 def main(args):
-    # Player enters the game
-    player = Player()
+
 
     # House builds table and establishes rules
     table_rules = TableConfig(args)
     table = CrapsTable(table_rules, args)
+    tracker = Tracker()
 
-    test_rounds = args.rounds
-    for i in range(test_rounds):
-        playing = table.play_round(player)
-        if not playing:
-            cprint('Exit at round {}'.format(i), 'yellow')
-            break
-    if player.broke:
-        cprint('~*~*~*~*~*~*~*~*~*~*~*~', 'red')
-    else:
-        cprint('~*~*~*~*~*~*~*~*~*~*~*~', 'green')
-    cprint('Peak $$$: {}'.format(player.max), 'cyan')
-    cprint('Low  $$$: {}'.format(player.min), 'magenta')
+    for k in range(args.series):
+        # New Player enters the game
+        player = Player(args)
+        tracker.new_series(player)
+        for i in range(args.rounds):
+            playing = table.play_round(player)
+            tracker.log_round(player)
+
+            if not playing:
+                if args.v:
+                    cprint('Exit at round {}'.format(i), 'yellow')
+                break
+        tracker.end_series(player)
+        
+        if args.v:
+            if player.broke:
+                cprint('~*~*~*~*~*~*~*~*~*~*~*~', 'red')
+            else:
+                cprint('~*~*~*~*~*~*~*~*~*~*~*~', 'green')
+            cprint('Peak $$$: {}'.format(player.max), 'cyan')
+            cprint('Low  $$$: {}'.format(player.min), 'magenta')
+        if not args.v:
+            printProgressBar(k, args.series)
+
+    tracker.summarize(player)
 
 
 # Main body
@@ -829,5 +870,8 @@ if __name__ == '__main__':
     parser.add_argument('-v', action='store_true', help='Verbose - Display table updates as the round progresses')
     parser.add_argument('-d', action='store_true', help='Run in debug mode')
     parser.add_argument('--rounds', default=50, type=int, help='Number of rounds to simulate.')
+    parser.add_argument('--series', default = 1000, type=int, help='Number of player series to simulate')
+    parser.add_argument('--out', default=10000, type=int, help='Point at which to cash out with winnings')
+    parser.add_argument('--buyin', default=5000, type=int, help='Money at player buy-in')
     args = parser.parse_args()
     main(args)
