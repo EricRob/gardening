@@ -1,0 +1,7 @@
+#requirements.in
+
+numpy
+termcolor
+scipy
+pyqt6
+matplotlib
